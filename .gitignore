@@ -1,0 +1,10 @@
+config.mk
+.ccls-cache
+compile_commands.json
+*.ll
+*.o
+*.skel.h
+lib/libbpf-install/
+.vscode/
+af_xdp_user
+btf_unit_test
