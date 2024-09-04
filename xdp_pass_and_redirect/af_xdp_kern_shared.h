@@ -9,4 +9,9 @@
 /* Assume netdev has no more than 64 queues */
 #define MAX_AF_SOCKS	64
 
+
+struct datarec {
+	__u64 rx_packets;
+};
+
 #endif /* __AF_XDP_KERN_SHARED_H */

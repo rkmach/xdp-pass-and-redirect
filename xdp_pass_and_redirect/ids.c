@@ -80,6 +80,31 @@ static bool global_exit;
 
 int contador = 0;
 
+void process_packet(struct xsk_socket_info *xsk, uint64_t addr, uint32_t len){
+	uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+	char* begin, *end;
+
+    	begin = (char*) (pkt + 54);
+	end = (char*) (pkt + len);
+
+	char payload[2048];
+	int i;
+
+	//for(i = 0; i < len; i++){
+	//	printf("%x\n", pkt[i]);
+	//}
+	//printf("\n");
+
+	i = 0;
+	while(begin != end){
+		payload[i] = *begin;
+		i++;
+		begin++;
+	}
+	payload[i] = '\0';
+	//printf("payload do pacote = %s\n", payload);
+}
+
 void handle_receive_packets(struct xsk_socket_info* xsk_info){
     uint32_t idx_rx = 0;
     uint32_t idx_fq = 0;
@@ -130,8 +155,8 @@ void handle_receive_packets(struct xsk_socket_info* xsk_info){
 
         // função que termina de verificar om pacote (AAAAAAAAAAAAAAAAAAAAAA)
         // process_packet(xsk_info, addr, len);
-        printf("pacote len = %d\n", len);
-        // process_packet(xsk_info, addr, len);
+        //printf("pacote len = %d\n", len);
+        //process_packet(xsk_info, addr, len);
 
         // adiciona o endereço à lista de endereços disponíveis do fill ring da UMEM
         xsk_free_umem_frame(xsk_info, addr);
@@ -157,7 +182,7 @@ void rx_and_process(struct config* config, struct xsk_socket_info** xsk_sockets,
     int ret;
     // fica nesse loop por toda a execução da IDS
     while(!global_exit){
-        printf("loop\n");
+        //printf("loop\n");
 
         // ret é o número de socket com algum evento (infelizmente não retorna quais os sockets :( 
         ret = poll(fds, n_queues, -1);  // timeout = -1. Sinifica que vai ficar bloqueado até que um evento ocorra.
@@ -167,7 +192,7 @@ void rx_and_process(struct config* config, struct xsk_socket_info** xsk_sockets,
         }
         for(i_queue = 0; i_queue < n_queues; i_queue++){
             if(fds[i_queue].revents & POLLIN){
-                printf("recebi na fila %d\n", i_queue);
+                //printf("recebi na fila %d\n", i_queue);
                 handle_receive_packets(xsk_sockets[i_queue]);
             }
         }
@@ -259,7 +284,6 @@ int main(int argc, char **argv)
 			malloc(sizeof(struct xsk_umem_info *) * n_queues);
 	xsk_sockets = (struct xsk_socket_info **)
 				  malloc(sizeof(struct xsk_socket_info *) * n_queues);
-
     if(!umems || !xsk_sockets){
         printf("Não consegui alocar o vetor de UMEMS ou o vetor de sockets!\n");
     }
@@ -268,6 +292,9 @@ int main(int argc, char **argv)
     if(!af_xdp_init(umems, xsk_sockets, n_queues, &cfg)){
         printf("Tudo certo!!\n");
     }
+    //for (int i_queue = 0; i_queue < n_queues; i_queue++) {
+    //    printf("%llx\n", umems[i_queue]->buffer);
+    //}
 
     /* fill xsks map */
     enter_xsks_into_map(xsks_map_fd, xsk_sockets, n_queues);
@@ -283,19 +310,45 @@ int main(int argc, char **argv)
 	}
     free(umems);
     free(xsk_sockets);
-    xdp_link_detach(cfg.ifindex, cfg.xdp_flags, 0);
+    //xdp_link_detach(cfg.ifindex, cfg.xdp_flags, 0);
 
+	/*
 	map = bpf_object__find_map_by_name(bpf_obj, "counter_map");
 	__u32 valor = 0;
 	__u32 k = 0, *v = &valor;
 	err = bpf_map__lookup_elem(map, &k, sizeof(__u32), v, sizeof(__u32), 0);
 	if (err < 0){
-		printf("Não peguei número de pacotes. Desconsiderar número abaixo\n");
+		//printf("Não peguei número de pacotes. Desconsiderar número abaixo\n");
 		fprintf(stderr, "ERROR: Cannot get number os processed packets \"%s\"\n",
 			strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 	printf("pkts = %d\n", *v);
 	printf("contador = %d\n", contador);
+	*/
+
+	/* For percpu maps, userspace gets a value per possible CPU */
+	unsigned int nr_cpus = libbpf_num_possible_cpus();
+	__u64 values[nr_cpus];
+	__u64 sum_pkts = 0;
+	int i;
+	__u32 key = 0;
+	//map = bpf_object__find_map_by_name(bpf_obj, "counter_map");
+	int fd = open_bpf_map_file(pin_dir, "counter_map", NULL);
+
+	if ((bpf_map_lookup_elem(fd, &key, values)) != 0) {
+		fprintf(stderr,
+			"ERR: bpf_map_lookup_elem failed key:0x%X\n", key);
+		return -1;
+	}
+
+	/* Sum values from each CPU */
+	for (i = 0; i < nr_cpus; i++) {
+		printf("values[%d] = %d\n", i, values[i]);
+		sum_pkts += values[i];
+	}
+	printf("\npackets = %lld\n\n", sum_pkts);
+	printf("\ncontador = %d\n", contador);
+	xdp_link_detach(cfg.ifindex, cfg.xdp_flags, 0);
     return 0;
 }

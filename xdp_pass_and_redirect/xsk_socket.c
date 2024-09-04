@@ -104,6 +104,7 @@ struct xsk_socket_info* configure_socket(struct config *cfg, int i_queue, struct
     // agora sim eu vou colocar os endereços da UMEM no fill ring (!!!!!!!!!)
     for(int i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS; i++){
         *xsk_ring_prod__fill_addr(&xsk_info->umem->fq, idx) = xsk_alloc_umem_frame(xsk_info);
+	//printf("idx = %d\n", idx);
         idx++;
     }
     

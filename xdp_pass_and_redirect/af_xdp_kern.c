@@ -11,6 +11,17 @@ struct {
 	__uint(value_size, sizeof(int));
 } xsks_map SEC(".maps");
 
+struct perf_event_struct {
+	__u16 a;
+	__u16 b;
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
+	__type(key, __u32);
+	__type(value, __u32);
+} my_map SEC(".maps");
+
 // struct {
 // 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 // 	__type(key, __u32);
@@ -18,31 +29,42 @@ struct {
 // 	__uint(max_entries, 64);
 // } counter_map SEC(".maps");
 
+ //struct {
+ //    __uint(type, BPF_MAP_TYPE_ARRAY);
+ //    __uint(max_entries, 1);
+ //    __type(key, __u32);
+ //    __type(value, __u32);
+ //} counter_map SEC(".maps");
+
 struct {
-    __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, __u32);
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+ 	__type(key, __u32);
+    __type(value, __u64);
+ 	__uint(max_entries, 1);
+  //	__uint(pinning, LIBBPF_PIN_BY_NAME);
 } counter_map SEC(".maps");
 
 SEC("xdp")
 int xdp_ids_func(struct xdp_md *ctx)
 {
-
-    __u32 *pkt_count;
-    int index = ctx->rx_queue_index;
-
-    pkt_count = bpf_map_lookup_elem(&counter_map, &index);
-    if (pkt_count) {
-
-        /* We pass every other packet */
-        if ((*pkt_count)++ & 1)
-            return XDP_PASS;
+    __u32 k = 0;
+	__u64* rec = bpf_map_lookup_elem(&counter_map, &k);
+    //v = bpf_map_lookup_elem(&counter_map, &k);
+    if (rec) {
+        //__sync_fetch_and_add(v, 1);
+        //bpf_map_update_elem(&counter_map, &k, v, BPF_ANY);
+		*rec = *rec + 1;
+        //bpf_map_update_elem(&counter_map, &k, rec, BPF_ANY);
+        //bpf_printk("cont = %d\n", rec->rx_packets);
     }
 
-    if (bpf_map_lookup_elem(&xsks_map, &index))
+    int index = ctx->rx_queue_index;
+
+    if (bpf_map_lookup_elem(&xsks_map, &index)){
 		return bpf_redirect_map(&xsks_map, index, 0);
-    return XDP_DROP;
+        //return 0xdeadbeef;
+    }
+    return XDP_PASS;
 }
 
 char _license[] SEC("license") = "GPL";
